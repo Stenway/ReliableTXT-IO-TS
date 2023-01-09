@@ -1,4 +1,4 @@
-﻿import { NoReliableTxtPreambleError, ReliableTxtEncoding } from "@stenway/reliabletxt"
+﻿import { NoReliableTxtPreambleError, ReliableTxtDocument, ReliableTxtEncoding } from "@stenway/reliabletxt"
 import { ReliableTxtFile, ReverseLineIterator, SyncReliableTxtStreamReader, SyncReliableTxtStreamWriter } from "../src"
 import * as fs from 'fs'
 
@@ -20,6 +20,25 @@ function deleteFile(filePath: string): boolean {
 	}
 	return true
 }
+
+// ----------------------------------------------------------------------
+
+describe("ReliableTxtFile.isValid", () => {
+	test("True", () => {
+		ReliableTxtFile.writeAllTextSync("Test", testFilePath)
+		expect(ReliableTxtFile.isValidSync(testFilePath)).toEqual(true)
+	})
+
+	test("False", () => {
+		writeBytes(new Uint8Array([]), testFilePath)
+		expect(ReliableTxtFile.isValidSync(testFilePath)).toEqual(false)
+	})
+
+	test("Throw", () => {
+		deleteFile(testFilePath)
+		expect(() => ReliableTxtFile.isValidSync(testFilePath)).toThrow()
+	})
+})
 
 describe("ReliableTxtFile.getEncodingOrNullSync", () => {
 	test.each([
@@ -131,6 +150,36 @@ describe("ReliableTxtFile.writeAllLinesSync + readAllLinesSync", () => {
 	})
 })
 
+describe("ReliableTxtFile.saveSync", () => {
+	test("Overwrite", () => {
+		deleteFile(testFilePath)
+		const document = new ReliableTxtDocument("Test")
+		ReliableTxtFile.saveSync(document, testFilePath, true)
+		expect(ReliableTxtFile.readAllTextSync(testFilePath)).toEqual("Test")
+
+		const document2 = new ReliableTxtDocument("test2")
+		ReliableTxtFile.saveSync(document2, testFilePath, true)
+		expect(ReliableTxtFile.readAllTextSync(testFilePath)).toEqual("test2")
+
+		expect(() => ReliableTxtFile.saveSync(document, testFilePath, false)).toThrow()
+		deleteFile(testFilePath)
+
+		ReliableTxtFile.saveSync(document, testFilePath, false)
+		expect(ReliableTxtFile.readAllTextSync(testFilePath)).toEqual("Test")
+	})
+
+	test("No overwrite parameter", () => {
+		deleteFile(testFilePath)
+		const document = new ReliableTxtDocument("Test")
+		ReliableTxtFile.saveSync(document, testFilePath)
+		expect(ReliableTxtFile.readAllTextSync(testFilePath)).toEqual("Test")
+
+		const document2 = new ReliableTxtDocument("test2")
+		ReliableTxtFile.saveSync(document2, testFilePath)
+		expect(ReliableTxtFile.readAllTextSync(testFilePath)).toEqual("test2")
+	})
+})
+
 describe("ReliableTxtFile.appendAllTextSync", () => {
 	test.each([
 		["", ReliableTxtEncoding.Utf8, "", ReliableTxtEncoding.Utf8, ""],
@@ -156,27 +205,31 @@ describe("ReliableTxtFile.appendAllTextSync", () => {
 	])(
 		"Given %p, %p, %p and %p returns %p",
 		(input1, encoding1, input2, encoding2, output) => {
-			const filePath = testFilePath
-			deleteFile(filePath)
-			ReliableTxtFile.appendAllTextSync(input1, filePath, encoding1)
-			let loaded = ReliableTxtFile.loadSync(filePath)
+			deleteFile(testFilePath)
+			ReliableTxtFile.appendAllTextSync(input1, testFilePath, encoding1)
+			let loaded = ReliableTxtFile.loadSync(testFilePath)
 			expect(loaded.text).toEqual(input1)
 			expect(loaded.encoding).toEqual(encoding1)
 
-			ReliableTxtFile.appendAllTextSync(input2, filePath, encoding2)
-			loaded = ReliableTxtFile.loadSync(filePath)
+			ReliableTxtFile.appendAllTextSync(input2, testFilePath, encoding2)
+			loaded = ReliableTxtFile.loadSync(testFilePath)
 			expect(loaded.text).toEqual(output)
 			expect(loaded.encoding).toEqual(encoding1)
 		}
 	)
 
 	test("Without encoding", () => {
-		const filePath = testFilePath
-		deleteFile(filePath)
-		ReliableTxtFile.appendAllTextSync("Test", filePath)
-		const loaded = ReliableTxtFile.loadSync(filePath)
+		deleteFile(testFilePath)
+		ReliableTxtFile.appendAllTextSync("Test", testFilePath)
+		const loaded = ReliableTxtFile.loadSync(testFilePath)
 		expect(loaded.text).toEqual("Test")
 		expect(loaded.encoding).toEqual(ReliableTxtEncoding.Utf8)
+	})
+
+	test("Append to Non-ReliableTXT", () => {
+		deleteFile(testFilePath)
+		writeBytes(new Uint8Array([]), testFilePath)
+		expect(() => ReliableTxtFile.appendAllTextSync("Test", testFilePath)).toThrow()
 	})
 })
 
@@ -205,27 +258,31 @@ describe("ReliableTxtFile.appendAllLinesSync", () => {
 	])(
 		"Given %p, %p, %p and %p returns %p",
 		(input1, encoding1, output1, input2, encoding2, output2) => {
-			const filePath = testFilePath
-			deleteFile(filePath)
-			ReliableTxtFile.appendAllLinesSync(input1, filePath, encoding1)
-			let loaded = ReliableTxtFile.loadSync(filePath)
+			deleteFile(testFilePath)
+			ReliableTxtFile.appendAllLinesSync(input1, testFilePath, encoding1)
+			let loaded = ReliableTxtFile.loadSync(testFilePath)
 			expect(loaded.text).toEqual(output1)
 			expect(loaded.encoding).toEqual(encoding1)
 
-			ReliableTxtFile.appendAllLinesSync(input2, filePath, encoding2)
-			loaded = ReliableTxtFile.loadSync(filePath)
+			ReliableTxtFile.appendAllLinesSync(input2, testFilePath, encoding2)
+			loaded = ReliableTxtFile.loadSync(testFilePath)
 			expect(loaded.text).toEqual(output2)
 			expect(loaded.encoding).toEqual(encoding1)
 		}
 	)
 
 	test("Without encoding", () => {
-		const filePath = testFilePath
-		deleteFile(filePath)
-		ReliableTxtFile.appendAllLinesSync(["Line1"], filePath)
-		const loaded = ReliableTxtFile.loadSync(filePath)
+		deleteFile(testFilePath)
+		ReliableTxtFile.appendAllLinesSync(["Line1"], testFilePath)
+		const loaded = ReliableTxtFile.loadSync(testFilePath)
 		expect(loaded.text).toEqual("Line1")
 		expect(loaded.encoding).toEqual(ReliableTxtEncoding.Utf8)
+	})
+
+	test("Append to Non-ReliableTXT", () => {
+		deleteFile(testFilePath)
+		writeBytes(new Uint8Array([]), testFilePath)
+		expect(() => ReliableTxtFile.appendAllLinesSync(["Test"], testFilePath)).toThrow()
 	})
 })
 

@@ -1,6 +1,6 @@
 {
   "name": "@stenway/reliabletxt-io",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Stefan John / Stenway / ReliableTXT.com / 2023",
   "homepage": "https://www.reliabletxt.com",
   "repository": "github:Stenway/ReliableTXT-IO-TS",
@@ -37,6 +37,6 @@
     "typescript": "^4.8.4"
   },
   "dependencies": {
-    "@stenway/reliabletxt": "^0.1.2"
+    "@stenway/reliabletxt": "^0.1.3"
   }
 }

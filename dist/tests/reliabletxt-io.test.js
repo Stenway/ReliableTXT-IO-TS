@@ -42,6 +42,21 @@ function deleteFile(filePath) {
     }
     return true;
 }
+// ----------------------------------------------------------------------
+describe("ReliableTxtFile.isValid", () => {
+    test("True", () => {
+        src_1.ReliableTxtFile.writeAllTextSync("Test", testFilePath);
+        expect(src_1.ReliableTxtFile.isValidSync(testFilePath)).toEqual(true);
+    });
+    test("False", () => {
+        writeBytes(new Uint8Array([]), testFilePath);
+        expect(src_1.ReliableTxtFile.isValidSync(testFilePath)).toEqual(false);
+    });
+    test("Throw", () => {
+        deleteFile(testFilePath);
+        expect(() => src_1.ReliableTxtFile.isValidSync(testFilePath)).toThrow();
+    });
+});
 describe("ReliableTxtFile.getEncodingOrNullSync", () => {
     test.each([
         [[], null],
@@ -131,6 +146,30 @@ describe("ReliableTxtFile.writeAllLinesSync + readAllLinesSync", () => {
         expect(src_1.ReliableTxtFile.readAllLinesSync(testFilePath)).toEqual(["Line1"]);
     });
 });
+describe("ReliableTxtFile.saveSync", () => {
+    test("Overwrite", () => {
+        deleteFile(testFilePath);
+        const document = new reliabletxt_1.ReliableTxtDocument("Test");
+        src_1.ReliableTxtFile.saveSync(document, testFilePath, true);
+        expect(src_1.ReliableTxtFile.readAllTextSync(testFilePath)).toEqual("Test");
+        const document2 = new reliabletxt_1.ReliableTxtDocument("test2");
+        src_1.ReliableTxtFile.saveSync(document2, testFilePath, true);
+        expect(src_1.ReliableTxtFile.readAllTextSync(testFilePath)).toEqual("test2");
+        expect(() => src_1.ReliableTxtFile.saveSync(document, testFilePath, false)).toThrow();
+        deleteFile(testFilePath);
+        src_1.ReliableTxtFile.saveSync(document, testFilePath, false);
+        expect(src_1.ReliableTxtFile.readAllTextSync(testFilePath)).toEqual("Test");
+    });
+    test("No overwrite parameter", () => {
+        deleteFile(testFilePath);
+        const document = new reliabletxt_1.ReliableTxtDocument("Test");
+        src_1.ReliableTxtFile.saveSync(document, testFilePath);
+        expect(src_1.ReliableTxtFile.readAllTextSync(testFilePath)).toEqual("Test");
+        const document2 = new reliabletxt_1.ReliableTxtDocument("test2");
+        src_1.ReliableTxtFile.saveSync(document2, testFilePath);
+        expect(src_1.ReliableTxtFile.readAllTextSync(testFilePath)).toEqual("test2");
+    });
+});
 describe("ReliableTxtFile.appendAllTextSync", () => {
     test.each([
         ["", reliabletxt_1.ReliableTxtEncoding.Utf8, "", reliabletxt_1.ReliableTxtEncoding.Utf8, ""],
@@ -154,24 +193,27 @@ describe("ReliableTxtFile.appendAllTextSync", () => {
         ["Test1", reliabletxt_1.ReliableTxtEncoding.Utf32, "Test2", reliabletxt_1.ReliableTxtEncoding.Utf32, "Test1Test2"],
         ["Test1", reliabletxt_1.ReliableTxtEncoding.Utf8, "\uFEFFTest2", reliabletxt_1.ReliableTxtEncoding.Utf8, "Test1\uFEFFTest2"],
     ])("Given %p, %p, %p and %p returns %p", (input1, encoding1, input2, encoding2, output) => {
-        const filePath = testFilePath;
-        deleteFile(filePath);
-        src_1.ReliableTxtFile.appendAllTextSync(input1, filePath, encoding1);
-        let loaded = src_1.ReliableTxtFile.loadSync(filePath);
+        deleteFile(testFilePath);
+        src_1.ReliableTxtFile.appendAllTextSync(input1, testFilePath, encoding1);
+        let loaded = src_1.ReliableTxtFile.loadSync(testFilePath);
         expect(loaded.text).toEqual(input1);
         expect(loaded.encoding).toEqual(encoding1);
-        src_1.ReliableTxtFile.appendAllTextSync(input2, filePath, encoding2);
-        loaded = src_1.ReliableTxtFile.loadSync(filePath);
+        src_1.ReliableTxtFile.appendAllTextSync(input2, testFilePath, encoding2);
+        loaded = src_1.ReliableTxtFile.loadSync(testFilePath);
         expect(loaded.text).toEqual(output);
         expect(loaded.encoding).toEqual(encoding1);
     });
     test("Without encoding", () => {
-        const filePath = testFilePath;
-        deleteFile(filePath);
-        src_1.ReliableTxtFile.appendAllTextSync("Test", filePath);
-        const loaded = src_1.ReliableTxtFile.loadSync(filePath);
+        deleteFile(testFilePath);
+        src_1.ReliableTxtFile.appendAllTextSync("Test", testFilePath);
+        const loaded = src_1.ReliableTxtFile.loadSync(testFilePath);
         expect(loaded.text).toEqual("Test");
         expect(loaded.encoding).toEqual(reliabletxt_1.ReliableTxtEncoding.Utf8);
+    });
+    test("Append to Non-ReliableTXT", () => {
+        deleteFile(testFilePath);
+        writeBytes(new Uint8Array([]), testFilePath);
+        expect(() => src_1.ReliableTxtFile.appendAllTextSync("Test", testFilePath)).toThrow();
     });
 });
 describe("ReliableTxtFile.appendAllLinesSync", () => {
@@ -197,24 +239,27 @@ describe("ReliableTxtFile.appendAllLinesSync", () => {
         [["Line1"], reliabletxt_1.ReliableTxtEncoding.Utf32, "Line1", ["Line2"], reliabletxt_1.ReliableTxtEncoding.Utf32, "Line1\nLine2"],
         [["Line1", "Line2"], reliabletxt_1.ReliableTxtEncoding.Utf8, "Line1\nLine2", ["Line3", "Line4"], reliabletxt_1.ReliableTxtEncoding.Utf8, "Line1\nLine2\nLine3\nLine4"],
     ])("Given %p, %p, %p and %p returns %p", (input1, encoding1, output1, input2, encoding2, output2) => {
-        const filePath = testFilePath;
-        deleteFile(filePath);
-        src_1.ReliableTxtFile.appendAllLinesSync(input1, filePath, encoding1);
-        let loaded = src_1.ReliableTxtFile.loadSync(filePath);
+        deleteFile(testFilePath);
+        src_1.ReliableTxtFile.appendAllLinesSync(input1, testFilePath, encoding1);
+        let loaded = src_1.ReliableTxtFile.loadSync(testFilePath);
         expect(loaded.text).toEqual(output1);
         expect(loaded.encoding).toEqual(encoding1);
-        src_1.ReliableTxtFile.appendAllLinesSync(input2, filePath, encoding2);
-        loaded = src_1.ReliableTxtFile.loadSync(filePath);
+        src_1.ReliableTxtFile.appendAllLinesSync(input2, testFilePath, encoding2);
+        loaded = src_1.ReliableTxtFile.loadSync(testFilePath);
         expect(loaded.text).toEqual(output2);
         expect(loaded.encoding).toEqual(encoding1);
     });
     test("Without encoding", () => {
-        const filePath = testFilePath;
-        deleteFile(filePath);
-        src_1.ReliableTxtFile.appendAllLinesSync(["Line1"], filePath);
-        const loaded = src_1.ReliableTxtFile.loadSync(filePath);
+        deleteFile(testFilePath);
+        src_1.ReliableTxtFile.appendAllLinesSync(["Line1"], testFilePath);
+        const loaded = src_1.ReliableTxtFile.loadSync(testFilePath);
         expect(loaded.text).toEqual("Line1");
         expect(loaded.encoding).toEqual(reliabletxt_1.ReliableTxtEncoding.Utf8);
+    });
+    test("Append to Non-ReliableTXT", () => {
+        deleteFile(testFilePath);
+        writeBytes(new Uint8Array([]), testFilePath);
+        expect(() => src_1.ReliableTxtFile.appendAllLinesSync(["Test"], testFilePath)).toThrow();
     });
 });
 // ----------------------------------------------------------------------

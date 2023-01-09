@@ -6,80 +6,124 @@ import { NoReliableTxtPreambleError, ReliableTxtDecoder, ReliableTxtDocument, Re
 // ----------------------------------------------------------------------
 
 export abstract class ReliableTxtFile {
-	static getEncodingOrNullSync(filePath: string): ReliableTxtEncoding | null {
-		const handle: number = fs.openSync(filePath, "r")
+	static isValidSync(filePath: string): boolean {
+		const bytes = this.readAllBytesSync(filePath)
+		try {
+			ReliableTxtDocument.fromBytes(bytes)
+		} catch (error) {
+			return false
+		}
+		return true
+	}
+	
+	private static getEncodingOrNullWithHandleSync(handle: number): ReliableTxtEncoding | null {
 		let buffer: Uint8Array = new Uint8Array(4)
 		const numBytesRead: number = fs.readSync(handle, buffer)
 		buffer = buffer.slice(0, numBytesRead)
-		fs.closeSync(handle)
 		return ReliableTxtDecoder.getEncodingOrNull(buffer)
 	}
 
+	static getEncodingOrNullSync(filePath: string): ReliableTxtEncoding | null {
+		const handle: number = fs.openSync(filePath, "r")
+		try {
+			return this.getEncodingOrNullWithHandleSync(handle)
+		} finally {
+			fs.closeSync(handle)
+		}
+	}
+
 	static getEncodingSync(filePath: string): ReliableTxtEncoding {
-		const encoding: ReliableTxtEncoding | null = ReliableTxtFile.getEncodingOrNullSync(filePath)
+		const encoding: ReliableTxtEncoding | null = this.getEncodingOrNullSync(filePath)
 		if (encoding === null) {
 			throw new NoReliableTxtPreambleError()
 		}
 		return encoding
 	}
 
-	static loadSync(filePath: string): ReliableTxtDocument {
+	private static readAllBytesSync(filePath: string): Uint8Array {
 		const handle: number = fs.openSync(filePath, "r")
-		const fileSize: number = fs.fstatSync(handle).size
-		const buffer: Uint8Array = new Uint8Array(fileSize)
-		const numBytesRead: number = fs.readSync(handle, buffer)
-		if (numBytesRead !== fileSize) { throw new Error(`File was not fully read`) }
-		fs.closeSync(handle)
-		return ReliableTxtDocument.fromBytes(buffer)
+		try {
+			const fileSize: number = fs.fstatSync(handle).size
+			const buffer: Uint8Array = new Uint8Array(fileSize)
+			const numBytesRead: number = fs.readSync(handle, buffer)
+			if (numBytesRead !== fileSize) { throw new Error(`File was not fully read`) }
+			return buffer
+		} finally {
+			fs.closeSync(handle)
+		}
+	}
+
+	static loadSync(filePath: string): ReliableTxtDocument {
+		const bytes = this.readAllBytesSync(filePath)
+		return ReliableTxtDocument.fromBytes(bytes)
+	}
+
+	private static appendToExistingFileSync(content: string, filePath: string, prependLineBreakIfNotEmpty: boolean) {
+		const handle: number = fs.openSync(filePath, "r+")
+		try {
+			const encodingOrNull = this.getEncodingOrNullWithHandleSync(handle)
+			if (encodingOrNull === null) { throw new NoReliableTxtPreambleError() }
+			const fileSize: number = fs.fstatSync(handle).size
+			const isEmpty: boolean = ReliableTxtEncodingUtil.getPreambleSize(encodingOrNull) === fileSize
+			if (prependLineBreakIfNotEmpty && !isEmpty) {
+				content = "\n" + content
+			}
+			const bytes: Uint8Array = ReliableTxtEncoder.encodePart(content, encodingOrNull)
+			const numBytesWritten: number = fs.writeSync(handle, bytes, 0, bytes.length, fileSize)
+			if (numBytesWritten !== bytes.length) { throw new Error(`File was not fully written`) }
+		} finally {
+			fs.closeSync(handle)
+		}
 	}
 
 	static appendAllTextSync(content: string, filePath: string, createWithEncoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8) {
-		if (fs.existsSync(filePath)) {
-			const detectedEncoding: ReliableTxtEncoding = ReliableTxtFile.getEncodingSync(filePath)
-			const bytes: Uint8Array = ReliableTxtEncoder.encodePart(content, detectedEncoding)
-			fs.appendFileSync(filePath, bytes)
-		} else {
-			ReliableTxtFile.writeAllTextSync(content, filePath, createWithEncoding)
+		try {
+			this.appendToExistingFileSync(content, filePath, false)
+		} catch (error) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			if ((error as any).code === "ENOENT") {
+				this.writeAllTextSync(content, filePath, createWithEncoding, false)
+			} else {
+				throw error
+			}
 		}
 	}
 
 	static appendAllLinesSync(lines: string[], filePath: string, createWithEncoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8) {
-		if (fs.existsSync(filePath)) {
-			const detectedEncoding: ReliableTxtEncoding = ReliableTxtFile.getEncodingSync(filePath)
-			const fileSize: number = fs.statSync(filePath).size
-			const isEmpty: boolean = ReliableTxtEncodingUtil.getPreambleSize(detectedEncoding) === fileSize
-			
-			let content: string = ReliableTxtLines.join(lines)
-			if (!isEmpty) { content = "\n" + content }
-			const bytes: Uint8Array = ReliableTxtEncoder.encodePart(content, detectedEncoding)
-
-			fs.appendFileSync(filePath, bytes)
-		} else {
-			ReliableTxtFile.writeAllLinesSync(lines, filePath, createWithEncoding)
+		const content: string = ReliableTxtLines.join(lines)
+		try {
+			this.appendToExistingFileSync(content, filePath, true)
+		} catch (error) {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			if ((error as any).code === "ENOENT") {
+				this.writeAllTextSync(content, filePath, createWithEncoding, false)
+			} else {
+				throw error
+			}
 		}
 	}
 
 	static readAllTextSync(filePath: string): string {
-		return ReliableTxtFile.loadSync(filePath).text
+		return this.loadSync(filePath).text
 	}
 
 	static readAllLinesSync(filePath: string): string[] {
-		return ReliableTxtFile.loadSync(filePath).getLines()
+		return this.loadSync(filePath).getLines()
 	}
 
-	static saveSync(document: ReliableTxtDocument, filePath: string) {
+	static saveSync(document: ReliableTxtDocument, filePath: string, overwriteExisting: boolean = true) {
 		const bytes: Uint8Array = document.getBytes()
-		fs.writeFileSync(filePath, bytes)
+		fs.writeFileSync(filePath, bytes, { flag: overwriteExisting ? "w" : "wx" })
 	}
 
-	static writeAllTextSync(content: string, filePath: string, encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8) {
+	static writeAllTextSync(content: string, filePath: string, encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8, overwriteExisting: boolean = true) {
 		const document: ReliableTxtDocument = new ReliableTxtDocument(content, encoding)
-		ReliableTxtFile.saveSync(document, filePath)
+		this.saveSync(document, filePath, overwriteExisting)
 	}
 
-	static writeAllLinesSync(lines: string[], filePath: string, encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8) {
+	static writeAllLinesSync(lines: string[], filePath: string, encoding: ReliableTxtEncoding = ReliableTxtEncoding.Utf8, overwriteExisting: boolean = true) {
 		const document: ReliableTxtDocument = ReliableTxtDocument.fromLines(lines, encoding)
-		ReliableTxtFile.saveSync(document, filePath)
+		this.saveSync(document, filePath, overwriteExisting)
 	}
 }
 

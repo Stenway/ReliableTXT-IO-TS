@@ -1,15 +1,19 @@
 import { ReliableTxtDocument, ReliableTxtEncoding } from '@stenway/reliabletxt';
 export declare abstract class ReliableTxtFile {
+    static isValidSync(filePath: string): boolean;
+    private static getEncodingOrNullWithHandleSync;
     static getEncodingOrNullSync(filePath: string): ReliableTxtEncoding | null;
     static getEncodingSync(filePath: string): ReliableTxtEncoding;
+    private static readAllBytesSync;
     static loadSync(filePath: string): ReliableTxtDocument;
+    private static appendToExistingFileSync;
     static appendAllTextSync(content: string, filePath: string, createWithEncoding?: ReliableTxtEncoding): void;
     static appendAllLinesSync(lines: string[], filePath: string, createWithEncoding?: ReliableTxtEncoding): void;
     static readAllTextSync(filePath: string): string;
     static readAllLinesSync(filePath: string): string[];
-    static saveSync(document: ReliableTxtDocument, filePath: string): void;
-    static writeAllTextSync(content: string, filePath: string, encoding?: ReliableTxtEncoding): void;
-    static writeAllLinesSync(lines: string[], filePath: string, encoding?: ReliableTxtEncoding): void;
+    static saveSync(document: ReliableTxtDocument, filePath: string, overwriteExisting?: boolean): void;
+    static writeAllTextSync(content: string, filePath: string, encoding?: ReliableTxtEncoding, overwriteExisting?: boolean): void;
+    static writeAllLinesSync(lines: string[], filePath: string, encoding?: ReliableTxtEncoding, overwriteExisting?: boolean): void;
 }
 export declare class SyncReliableTxtStreamReader {
     private handle;

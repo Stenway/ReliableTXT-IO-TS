@@ -29,75 +29,125 @@ const fs = __importStar(require("fs"));
 const reliabletxt_1 = require("@stenway/reliabletxt");
 // ----------------------------------------------------------------------
 class ReliableTxtFile {
-    static getEncodingOrNullSync(filePath) {
-        const handle = fs.openSync(filePath, "r");
+    static isValidSync(filePath) {
+        const bytes = this.readAllBytesSync(filePath);
+        try {
+            reliabletxt_1.ReliableTxtDocument.fromBytes(bytes);
+        }
+        catch (error) {
+            return false;
+        }
+        return true;
+    }
+    static getEncodingOrNullWithHandleSync(handle) {
         let buffer = new Uint8Array(4);
         const numBytesRead = fs.readSync(handle, buffer);
         buffer = buffer.slice(0, numBytesRead);
-        fs.closeSync(handle);
         return reliabletxt_1.ReliableTxtDecoder.getEncodingOrNull(buffer);
     }
+    static getEncodingOrNullSync(filePath) {
+        const handle = fs.openSync(filePath, "r");
+        try {
+            return this.getEncodingOrNullWithHandleSync(handle);
+        }
+        finally {
+            fs.closeSync(handle);
+        }
+    }
     static getEncodingSync(filePath) {
-        const encoding = ReliableTxtFile.getEncodingOrNullSync(filePath);
+        const encoding = this.getEncodingOrNullSync(filePath);
         if (encoding === null) {
             throw new reliabletxt_1.NoReliableTxtPreambleError();
         }
         return encoding;
     }
-    static loadSync(filePath) {
+    static readAllBytesSync(filePath) {
         const handle = fs.openSync(filePath, "r");
-        const fileSize = fs.fstatSync(handle).size;
-        const buffer = new Uint8Array(fileSize);
-        const numBytesRead = fs.readSync(handle, buffer);
-        if (numBytesRead !== fileSize) {
-            throw new Error(`File was not fully read`);
+        try {
+            const fileSize = fs.fstatSync(handle).size;
+            const buffer = new Uint8Array(fileSize);
+            const numBytesRead = fs.readSync(handle, buffer);
+            if (numBytesRead !== fileSize) {
+                throw new Error(`File was not fully read`);
+            }
+            return buffer;
         }
-        fs.closeSync(handle);
-        return reliabletxt_1.ReliableTxtDocument.fromBytes(buffer);
+        finally {
+            fs.closeSync(handle);
+        }
+    }
+    static loadSync(filePath) {
+        const bytes = this.readAllBytesSync(filePath);
+        return reliabletxt_1.ReliableTxtDocument.fromBytes(bytes);
+    }
+    static appendToExistingFileSync(content, filePath, prependLineBreakIfNotEmpty) {
+        const handle = fs.openSync(filePath, "r+");
+        try {
+            const encodingOrNull = this.getEncodingOrNullWithHandleSync(handle);
+            if (encodingOrNull === null) {
+                throw new reliabletxt_1.NoReliableTxtPreambleError();
+            }
+            const fileSize = fs.fstatSync(handle).size;
+            const isEmpty = reliabletxt_1.ReliableTxtEncodingUtil.getPreambleSize(encodingOrNull) === fileSize;
+            if (prependLineBreakIfNotEmpty && !isEmpty) {
+                content = "\n" + content;
+            }
+            const bytes = reliabletxt_1.ReliableTxtEncoder.encodePart(content, encodingOrNull);
+            const numBytesWritten = fs.writeSync(handle, bytes, 0, bytes.length, fileSize);
+            if (numBytesWritten !== bytes.length) {
+                throw new Error(`File was not fully written`);
+            }
+        }
+        finally {
+            fs.closeSync(handle);
+        }
     }
     static appendAllTextSync(content, filePath, createWithEncoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
-        if (fs.existsSync(filePath)) {
-            const detectedEncoding = ReliableTxtFile.getEncodingSync(filePath);
-            const bytes = reliabletxt_1.ReliableTxtEncoder.encodePart(content, detectedEncoding);
-            fs.appendFileSync(filePath, bytes);
+        try {
+            this.appendToExistingFileSync(content, filePath, false);
         }
-        else {
-            ReliableTxtFile.writeAllTextSync(content, filePath, createWithEncoding);
+        catch (error) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (error.code === "ENOENT") {
+                this.writeAllTextSync(content, filePath, createWithEncoding, false);
+            }
+            else {
+                throw error;
+            }
         }
     }
     static appendAllLinesSync(lines, filePath, createWithEncoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
-        if (fs.existsSync(filePath)) {
-            const detectedEncoding = ReliableTxtFile.getEncodingSync(filePath);
-            const fileSize = fs.statSync(filePath).size;
-            const isEmpty = reliabletxt_1.ReliableTxtEncodingUtil.getPreambleSize(detectedEncoding) === fileSize;
-            let content = reliabletxt_1.ReliableTxtLines.join(lines);
-            if (!isEmpty) {
-                content = "\n" + content;
-            }
-            const bytes = reliabletxt_1.ReliableTxtEncoder.encodePart(content, detectedEncoding);
-            fs.appendFileSync(filePath, bytes);
+        const content = reliabletxt_1.ReliableTxtLines.join(lines);
+        try {
+            this.appendToExistingFileSync(content, filePath, true);
         }
-        else {
-            ReliableTxtFile.writeAllLinesSync(lines, filePath, createWithEncoding);
+        catch (error) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            if (error.code === "ENOENT") {
+                this.writeAllTextSync(content, filePath, createWithEncoding, false);
+            }
+            else {
+                throw error;
+            }
         }
     }
     static readAllTextSync(filePath) {
-        return ReliableTxtFile.loadSync(filePath).text;
+        return this.loadSync(filePath).text;
     }
     static readAllLinesSync(filePath) {
-        return ReliableTxtFile.loadSync(filePath).getLines();
+        return this.loadSync(filePath).getLines();
     }
-    static saveSync(document, filePath) {
+    static saveSync(document, filePath, overwriteExisting = true) {
         const bytes = document.getBytes();
-        fs.writeFileSync(filePath, bytes);
+        fs.writeFileSync(filePath, bytes, { flag: overwriteExisting ? "w" : "wx" });
     }
-    static writeAllTextSync(content, filePath, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
+    static writeAllTextSync(content, filePath, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8, overwriteExisting = true) {
         const document = new reliabletxt_1.ReliableTxtDocument(content, encoding);
-        ReliableTxtFile.saveSync(document, filePath);
+        this.saveSync(document, filePath, overwriteExisting);
     }
-    static writeAllLinesSync(lines, filePath, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8) {
+    static writeAllLinesSync(lines, filePath, encoding = reliabletxt_1.ReliableTxtEncoding.Utf8, overwriteExisting = true) {
         const document = reliabletxt_1.ReliableTxtDocument.fromLines(lines, encoding);
-        ReliableTxtFile.saveSync(document, filePath);
+        this.saveSync(document, filePath, overwriteExisting);
     }
 }
 exports.ReliableTxtFile = ReliableTxtFile;
